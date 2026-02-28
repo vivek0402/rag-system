@@ -1,0 +1,80 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment variables (secrets!)
+.env
+
+# FAISS index files (large binary files)
+*.index
+
+# Uploaded PDFs
+data/raw/*.pdf
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+logs/
+*.log
+```
+
+**Why this matters:** The `venv/` folder can be 200MB+. You never commit it — you commit `requirements.txt` instead, so anyone can recreate the environment. The `.env` file will hold your API keys later. Committing secrets to GitHub is a career-limiting mistake.
+
+---
+
+## Step 5: Plan the project structure (before writing any code)
+
+This is where most beginners fail — they dump everything in one file. Here's our production-style layout:
+```
+rag-system/
+│
+├── app/                        # All application code lives here
+│   ├── __init__.py
+│   ├── ingestion/              # PDF reading & chunking
+│   │   ├── __init__.py
+│   │   ├── pdf_loader.py
+│   │   └── chunker.py
+│   ├── embeddings/             # Embedding generation
+│   │   ├── __init__.py
+│   │   └── embedder.py
+│   ├── vectorstore/            # FAISS storage & retrieval
+│   │   ├── __init__.py
+│   │   └── faiss_store.py
+│   ├── retrieval/              # Retrieval pipeline
+│   │   ├── __init__.py
+│   │   └── retriever.py
+│   ├── llm/                    # LLM integration
+│   │   ├── __init__.py
+│   │   └── generator.py
+│   └── api/                    # FastAPI routes
+│       ├── __init__.py
+│       └── routes.py
+│
+├── data/
+│   └── raw/                    # Put your PDFs here (gitignored)
+│
+├── tests/                      # One test file per module
+│   ├── test_chunker.py
+│   ├── test_embedder.py
+│   └── test_retriever.py
+│
+├── notebooks/                  # For experimentation only
+│   └── exploration.ipynb
+│
+├── main.py                     # FastAPI app entry point
+├── config.py                   # All config/constants in one place
+├── requirements.txt
+├── .env.example                # Template for secrets (safe to commit)
+├── .gitignore
+└── README.md
