@@ -1,11 +1,11 @@
 # app/api/routes.py
 
-import os
 import logging
 import shutil
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
+from typing import List
 
 from app.retrieval.retriever import Retriever
 from app.llm.generator import generate_answer
@@ -15,13 +15,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Single retriever instance — built once, reused for all queries
-# This is the "stateful" part of our API
 retriever = Retriever()
 is_index_built = False
+ingested_files = []  # track which files are in the index
 
 
-# ── Request/Response models ──────────────────────────────────────────
 class QueryRequest(BaseModel):
     question: str
     top_k: int = 3
@@ -33,47 +31,70 @@ class QueryResponse(BaseModel):
     model: str
 
 
-# ── Endpoints ────────────────────────────────────────────────────────
 @router.post("/ingest")
-async def ingest_pdf(file: UploadFile = File(...)):
+async def ingest_pdfs(files: List[UploadFile] = File(...)):
     """
-    Upload a PDF and build the vector index.
-    Call this before querying.
+    Upload one or more PDFs and build the vector index.
+    Each call ADDS to the existing index — does not replace it.
     """
-    global retriever, is_index_built
+    global retriever, is_index_built, ingested_files
 
-    if not file.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    saved_paths = []
 
-    # Save uploaded file to data/raw/
-    save_path = DATA_DIR / file.filename
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    for file in files:
+        if not file.filename.endswith(".pdf"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{file.filename} is not a PDF. Only PDF files are supported."
+            )
 
-    with open(save_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        save_path = DATA_DIR / file.filename
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    logger.info(f"PDF saved: {save_path}")
+        with open(save_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
 
-    # Build fresh index with this PDF
+        saved_paths.append(str(save_path))
+        ingested_files.append(file.filename)
+        logger.info(f"PDF saved: {save_path}")
+
+    # Build index with ALL files ingested so far
     retriever = Retriever()
-    retriever.build_index([str(save_path)])
+    all_paths = [str(DATA_DIR / f) for f in ingested_files]
+    retriever.build_index(all_paths)
     is_index_built = True
 
     return {
-        "message": f"Successfully ingested {file.filename}",
-        "chunks_indexed": retriever.store.total_chunks()
+        "message": f"Successfully ingested {len(saved_paths)} file(s)",
+        "files_ingested": saved_paths,
+        "total_files_in_index": len(ingested_files),
+        "total_chunks": retriever.store.total_chunks()
     }
+
+
+@router.delete("/ingest/reset")
+async def reset_index():
+    """
+    Clear the index and start fresh.
+    """
+    global retriever, is_index_built, ingested_files
+
+    retriever = Retriever()
+    is_index_built = False
+    ingested_files = []
+
+    return {"message": "Index reset successfully."}
 
 
 @router.post("/query", response_model=QueryResponse)
 async def query(request: QueryRequest):
     """
-    Ask a question against the ingested document.
+    Ask a question against all ingested documents.
     """
     if not is_index_built:
         raise HTTPException(
             status_code=400,
-            detail="No document ingested yet. Call /ingest first."
+            detail="No documents ingested yet. Call /ingest first."
         )
 
     if not request.question.strip():
@@ -93,5 +114,9 @@ async def query(request: QueryRequest):
 
 @router.get("/health")
 async def health():
-    """Simple health check endpoint."""
-    return {"status": "ok", "index_built": is_index_built}
+    return {
+        "status": "ok",
+        "index_built": is_index_built,
+        "files_ingested": ingested_files,
+        "total_chunks": retriever.store.total_chunks() if is_index_built else 0
+    }
