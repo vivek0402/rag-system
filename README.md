@@ -4,6 +4,7 @@ A production-style RAG (Retrieval-Augmented Generation) pipeline built from scra
 Upload any PDF and ask questions — the system retrieves relevant context and generates grounded answers using an LLM.
 
 ## System Architecture
+
 ```
 PDF Input
    ↓
@@ -34,6 +35,7 @@ FastAPI                     — exposes everything as a REST API
 | Language | Python 3.11 |
 
 ## Project Structure
+
 ```
 rag-system/
 ├── app/
@@ -52,12 +54,14 @@ rag-system/
 ## Setup
 
 **1. Clone the repository**
+
 ```bash
 git clone https://github.com/vivek0402/rag-system.git
 cd rag-system
 ```
 
 **2. Create and activate virtual environment**
+
 ```bash
 python -m venv venv
 venv\Scripts\activate      # Windows
@@ -65,17 +69,20 @@ source venv/bin/activate   # Mac/Linux
 ```
 
 **3. Install dependencies**
+
 ```bash
 pip install -r requirements.txt
 ```
 
 **4. Set up environment variables**
+
 ```bash
 cp .env.example .env
 # Edit .env and add your GROQ_API_KEY
 ```
 
 **5. Run the API**
+
 ```bash
 uvicorn main:app --reload
 ```
@@ -85,29 +92,34 @@ Visit `http://127.0.0.1:8000/docs` for interactive API documentation.
 ## API Endpoints
 
 ### POST /api/v1/ingest
+
 Upload a PDF to build the vector index.
 
 ### POST /api/v1/query
+
 Ask a question against the ingested document.
 
 **Request:**
+
 ```json
 {
-  "question": "What is Vivek's CGPA?",
+  "question": "What are the key findings in this document?",
   "top_k": 3
 }
 ```
 
 **Response:**
+
 ```json
 {
-  "answer": "9.04",
-  "sources": [{"source": "file.pdf", "page": 1, "score": 0.199}],
+  "answer": "Based on the document, the key findings are...",
+  "sources": [{"source": "document.pdf", "page": 1, "score": 0.85}],
   "model": "llama-3.1-8b-instant"
 }
 ```
 
 ### GET /api/v1/health
+
 Health check endpoint.
 
 ## Key Design Decisions
@@ -127,12 +139,14 @@ Provenance — knowing where an answer came from — is critical for trust in pr
 ## Interview Prep
 
 This project demonstrates:
+
 - End-to-end RAG pipeline design
 - Vector similarity search (cosine similarity, FAISS)
 - Embedding models and semantic search
 - LLM prompt engineering for grounded generation
 - Production API design with FastAPI
 - Clean modular architecture with separation of concerns
+
 ```
 
 Save it.
@@ -152,4 +166,4 @@ Save it.
 
 GitHub will show you a page with commands. You need the URL of your repo — it looks like:
 ```
-https://github.com/vivek0402/rag-system.git
+<https://github.com/vivek0402/rag-system.git>
