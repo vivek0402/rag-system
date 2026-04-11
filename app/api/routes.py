@@ -9,7 +9,8 @@ from typing import List
 
 from app.retrieval.retriever import Retriever
 from app.llm.generator import generate_answer
-from config import DATA_DIR, INDEX_DIR
+from app.langchain_rag import LangChainRAG
+from config import DATA_DIR, INDEX_DIR, LC_INDEX_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,16 @@ else:
     is_index_built = False
     logger.info("No saved index found — starting fresh")
 
+# Initialize LangChain RAG and attempt to load saved index
+lc_rag = LangChainRAG()
+
+if lc_rag.load_index(LC_INDEX_DIR):
+    lc_index_built = True
+    logger.info("Restored LangChain index from disk on startup")
+else:
+    lc_index_built = False
+    logger.info("No saved LangChain index found — starting fresh")
+
 
 class QueryRequest(BaseModel):
     question: str
@@ -41,7 +52,7 @@ class QueryResponse(BaseModel):
 
 @router.post("/ingest")
 async def ingest_pdfs(files: List[UploadFile] = File(...)):
-    global retriever, is_index_built, ingested_files
+    global retriever, is_index_built, ingested_files, lc_rag, lc_index_built
 
     saved_paths = []
 
@@ -68,6 +79,13 @@ async def ingest_pdfs(files: List[UploadFile] = File(...)):
     retriever.store.save(INDEX_DIR)
     logger.info("Index persisted to disk")
 
+    # Keep LangChain pipeline in sync
+    lc_rag = LangChainRAG()
+    lc_rag.build_index(all_paths)
+    lc_rag.save_index(LC_INDEX_DIR)
+    lc_index_built = True
+    logger.info("LangChain index built and persisted to disk")
+
     return {
         "message": f"Successfully ingested {len(saved_paths)} file(s)",
         "files_ingested": saved_paths,
@@ -78,7 +96,7 @@ async def ingest_pdfs(files: List[UploadFile] = File(...)):
 
 @router.delete("/ingest/reset")
 async def reset_index():
-    global retriever, is_index_built, ingested_files
+    global retriever, is_index_built, ingested_files, lc_rag, lc_index_built
 
     retriever = Retriever()
     is_index_built = False
@@ -91,6 +109,17 @@ async def reset_index():
         index_path.unlink()
     if chunks_path.exists():
         chunks_path.unlink()
+
+    # Reset LangChain pipeline and delete its index files
+    lc_rag = LangChainRAG()
+    lc_index_built = False
+    lc_faiss = LC_INDEX_DIR / "index.faiss"
+    lc_pkl = LC_INDEX_DIR / "index.pkl"
+    if lc_faiss.exists():
+        lc_faiss.unlink()
+    if lc_pkl.exists():
+        lc_pkl.unlink()
+    logger.info("LangChain index reset")
 
     return {"message": "Index reset successfully."}
 
@@ -121,12 +150,27 @@ async def health():
     return {
         "status": "ok",
         "index_built": is_index_built,
+        "lc_index_built": lc_index_built,
         "files_ingested": ingested_files,
         "total_chunks": retriever.store.total_chunks() if is_index_built else 0
     }
-# Update `.gitignore` to exclude index files
 
-##Open `.gitignore` and add these lines at the bottom:
 
-# FAISS index files
-##data/index/
+@router.post("/langchain/query", response_model=QueryResponse)
+async def langchain_query(request: QueryRequest):
+    if not lc_index_built:
+        raise HTTPException(
+            status_code=400,
+            detail="No documents ingested yet. Call /ingest first."
+        )
+    if not request.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+
+    logger.info(f"LangChain query received: {request.question}")
+    response = lc_rag.query(request.question, top_k=request.top_k)
+
+    return QueryResponse(
+        answer=response["answer"],
+        sources=response["sources"],
+        model=response["model"]
+    )

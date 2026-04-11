@@ -8,16 +8,16 @@ WORKDIR /app
 
 # Install system dependencies required by PyMuPDF and FAISS
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first - Docker caches this layer
 # If requirements.txt doesn't change, Docker won't reinstall packages
-COPY requirements.txt .
+COPY requirements.docker.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.docker.txt
 
 # Copy the rest of the application code
 COPY . .
